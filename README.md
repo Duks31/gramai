@@ -1,190 +1,30 @@
-# ADTC 2026 — Submission Template
+# GramAI
 
-This is the official template repository for the **Africa Deep Tech Challenge 2026** Laptop LLM track.
+## Inspiration
+Nigerian developers and students especially those coming out of programs like 3MTT hit Python errors constantly but can't always reach Stack Overflow, ChatGPT, or Copilot. Data costs money, NEPA cuts power, internet drops. The debugging tools everyone assumes exist don't reliably exist for a significant portion of African developers. GramAI is the tool that works when nothing else does.
 
-Fork this repository, fill in the required files, and submit your repository URL via [adtc-2026.devpost.com](https://adtc-2026.devpost.com).
+## What it does
+GramAI takes a Python traceback as input and returns a plain-English root-cause diagnosis and a concrete fix. Nothing else, no general chat, no code generation, no explanations nobody asked for. It runs entirely offline via llama.cpp on a standard laptop with no discrete GPU, using a two-tier RAG layer over a curated corpus of verified Python error patterns to ground the model's responses.
 
----
+## How I built it
+- Model: Qwen2.5-3B-Instruct quantized to Q4_K_M via llama.cpp, selected after benchmarking against Phi-3.5-mini and Llama-3.2-3B on real Python debugging tasks
+- RAG layer: a two-tier corpus of 48 verified error entries. Tier 1 covers canonical Python exceptions (TypeError, AttributeError, ModuleNotFoundError etc.), Tier 2 is drawn from real engineering debugging history covering serial port conflicts, Docker networking failures, config type mismatches, and dependency version conflicts
+- Retrieval: sentence-transformers (all-MiniLM-L6-v2) + FAISS flat index, bundled locally for zero network calls at runtime
+- Inference: llama-cpp-python bindings, CPU-only (n_gpu_layers=0), max_tokens=300 hard cap, temperature=0.1 for deterministic diagnostic outputs
+- Benchmarks: 21.56 tokens/sec generation, 3,454 MB peak RAM, well within the 7GB ceiling
 
-## ✅ Submission Checklist
+## Challenges we ran into
+RAG retrieval bleeding was the core technical problem. Early versions retrieved the wrong corpus entry for similar-looking tracebacks, a plain dict AttributeError was pulling in an API-response entry and hallucinating response.json() into the fix. Solving this required iterating on traceback_pattern field specificity, not just adding more entries. More corpus isn't better, more precise corpus is better.
+The other real challenge: a 3B model has strong internal priors from pretraining (e.g. sys.path.append is a very common Stack Overflow answer for ModuleNotFoundError) that compete with retrieved context. The fix was a combination of more directive system prompt instructions and rewriting fix fields to use Python-flavored syntax the model would anchor to, rather than shell command blocks it would ignore.
 
-Before submitting, confirm every item:
+## Accomplishments that we're proud of
+The baseline test that mattered most: without RAG, the model gave a completely wrong fix for a TypeError caused by a config value loaded as a string from YAML, it suggested concatenating both operands as strings. With RAG, it correctly diagnosed the root cause and produced float(config['fraud_threshold']) + 0.05. That's the whole point of the system working, not impressive benchmark numbers, but a wrong answer becoming a right one on exactly the error type that trips up real developers.
 
-- [ ] Your repository is **public** on GitHub
-- [ ] `metadata.json` is fully filled in — no placeholder values remain
-- [ ] `metadata.json` contains exactly **2 test prompts** in the `test_prompts` array, written for your chosen domain
-- [ ] `download_model.sh` successfully downloads your model to `model/`
-- [ ] The downloaded file is a valid **GGUF format** (`.gguf`) weight file
-- [ ] `model/*.gguf` is listed in `.gitignore` — do **not** commit large weight files
-- [ ] `REPORT.md` is filled in with your technical writeup
-- [ ] Running `bash download_model.sh` completes without errors
-- [ ] Your model runs entirely **offline** — zero external network calls during inference
+## What we learned
+Retrieval quality matters more than corpus size. 48 well-written, precisely patterned, manually verified entries outperform 200 scraped entries with generic traceback_pattern fields. The embedding distance between a query and a corpus entry is entirely determined by how precisely the traceback_pattern captures the distinctive signature of that error, getting that right is the actual engineering work, not the model selection.
 
----
-
-## 📁 Required File Structure
-
-```
-your-submission/
-├── metadata.json          ← Required. Team, model, and test prompt metadata.
-├── download_model.sh      ← Required. Downloads your .gguf model weight file.
-├── REPORT.md              ← Required. Technical writeup (problem, design, benchmarks).
-├── model/
-│   └── your-model.gguf   ← Downloaded by the script above. Do NOT commit.
-└── .gitignore             ← Must exclude *.gguf and model/ from version control.
-```
-
----
-
-## 📝 metadata.json
-
-Fill in every field. No field should remain at its placeholder value.
-
-```json
-{
-  "team_id": "your-team-id",
-  "domain": "coding_assistants",
-  "language_scope": ["en"],
-  "african_alpha_claim": false,
-  "budget_laptop_claim": true,
-  "submitter": {
-    "name": "your-name",
-    "email": "your-email@domain.com",
-    "github_handle": "your-github"
-  },
-  "cross_disciplinary_pairing": {
-    "discipline": "education",
-    "load_bearing": true,
-    "description": "Brief description of how your model serves a real-world domain."
-  },
-  "test_prompts": [
-    {
-      "prompt_id": "tp_001",
-      "prompt": "Your first test prompt, written for your chosen domain."
-    },
-    {
-      "prompt_id": "tp_002",
-      "prompt": "Your second test prompt, written for your chosen domain."
-    }
-  ],
-  "model": {
-    "name": "YourModel-Q4_K_M",
-    "runtime": "llama.cpp",
-    "quantization": "GGUF Q4_K_M",
-    "parameters_estimate": "1.1B",
-    "packaging": "binary_bundle"
-  },
-  "_runtime": {
-    "model_path": "model/your-model.gguf"
-  }
-}
-```
-
-### Field Reference
-
-| Field | Required | Description |
-|---|---|---|
-| `team_id` | ✅ | Your unique team ID as registered on the ADTF portal |
-| `domain` | ✅ | Your challenge track. One of: `math_scientific_reasoning`, `healthcare_medical`, `agriculture`, `creative_writing`, `coding_assistants`, `corporate_enterprise`, `autonomous_ai_agents` |
-| `language_scope` | ✅ | Array of BCP-47 language codes. Must include at least one. |
-| `african_alpha_claim` | ✅ | `true` only if claiming the African Use Case Bonus |
-| `budget_laptop_claim` | ✅ | Must be `true` — all submissions target the 8 GB RAM laptop profile |
-| `submitter.name` | ✅ | Full name of the team member submitting the run |
-| `submitter.email` | ✅ | Valid email address linked to the registered team |
-| `submitter.github_handle` | ✅ | Verifiable GitHub username |
-| `cross_disciplinary_pairing.discipline` | ✅ | The deep-tech discipline your model serves |
-| `cross_disciplinary_pairing.load_bearing` | ✅ | `true` if the pairing is integral to the submission, not cosmetic |
-| `test_prompts` | ✅ | **Exactly 2 prompts** in your chosen domain. Organizers will add 2 hidden prompts to test for overfitting. |
-| `model.runtime` | ✅ | Must be `llama.cpp`. No other runtime is accepted. |
-| `model.quantization` | ✅ | Must be a GGUF quantization format (e.g. `GGUF Q4_K_M`, `GGUF Q5_K_M`) |
-| `model.parameters_estimate` | ✅ | Approximate parameter count (e.g. `135M`, `1.1B`, `7B`) |
-| `model.packaging` | ✅ | How the model is packaged. One of: `docker_image`, `docker_build_from_repo`, `binary_bundle` |
-| `_runtime.model_path` | ✅ | Relative path from repo root to your `.gguf` file (e.g. `model/my-model.gguf`) |
-
----
-
-## 📥 download_model.sh
-
-This script **must** download your model weight file to the `model/` directory.
-
-Rules:
-- Must be idempotent — safe to run multiple times without re-downloading.
-- Must work without any credentials — your weights must be publicly accessible.
-- The downloaded file path must exactly match `_runtime.model_path` in `metadata.json`.
-
-Recommended hosting options for your weights:
-- [Hugging Face](https://huggingface.co) — public model repos (free, best for GGUF files)
-- GitHub Release Assets — attach the `.gguf` file to a GitHub Release
-- Any stable public URL (GCS public bucket, S3 public object, etc.)
-
----
-
-## 📄 REPORT.md
-
-Your technical writeup. Judges and the LLM-based audit system will read this to understand your submission. Cover:
-
-1. **Problem** — What problem are you solving? Who is the target user in an African context?
-2. **Design Decisions** — What model did you start from? Why that quantization level? What alternatives did you evaluate?
-3. **Constraints** — What hardware, connectivity, or data constraints shaped your approach?
-4. **Benchmarks** — What inference speed and memory numbers did you observe on your development machine?
-
-Keep it factual and specific. One to three pages is ideal.
-
----
-
-## 🧪 Local Testing
-
-The ADTC profiler is open source. Install it directly from the official repository:
-
-```bash
-pip install "git+https://github.com/Africa-Deep-Tech-Foundation/adtc-profiler.git"
-```
-
-Then run a local smoke test before submitting:
-
-```bash
-# 1. Download your weights
-bash download_model.sh
-
-# 2. Run the profiler in participant mode
-adtc-profiler run \
-  --submission . \
-  --mode participant \
-  --output submission.json \
-  --skip-accuracy
-
-# 3. Review your report
-cat submission.json
-```
-
-A valid run produces a `submission.json` with `"measured_on": "participant_laptop"`.
-
-The profiler source code, including the thermal monitoring logic and scoring formulas, is publicly readable at:
-[github.com/Africa-Deep-Tech-Foundation/adtc-profiler](https://github.com/Africa-Deep-Tech-Foundation/adtc-profiler)
-
----
-
-## ⚠️ Rules
-
-1. **Public repository required.** Your repository must be public at the time of evaluation.
-2. **No model weights in git.** Add `*.gguf` and `model/` to your `.gitignore`. The evaluator downloads weights fresh via `download_model.sh`.
-3. **100% offline during evaluation.** Your model must run with zero external network dependencies during our testing window. `download_model.sh` runs before the profiler starts, but once profiling begins, no outbound requests are permitted.
-4. **llama.cpp only.** All models must use GGUF weights and run through `llama.cpp`. No other runtime is supported by our evaluation framework.
-5. **8 GB RAM limit.** Your model must run within the standard laptop profile (4 vCPU, 8 GB RAM, integrated GPU only). Out-of-memory errors during evaluation result in automatic disqualification.
-6. **No size restriction.** There is no parameter count or file size cap — but the 8 GB RAM constraint is strict. Plan your quantization level accordingly.
-7. **Two test prompts required.** Your `metadata.json` must include exactly 2 prompts in the `test_prompts` array. Organizers will generate 2 additional hidden prompts within your domain. All 4 are used for scoring.
-
----
-
-## 🆘 Support
-
-Open an issue in this repository or contact the ADTF team at challenge@africadeeptech.org.
-
-View the full eligibility rules at [adtc-2026.devpost.com/rules](https://adtc-2026.devpost.com/rules).
-
----
-
-## 📄 License
-
-This template is licensed under the terms of the [GNU GPL v3 License](LICENSE).
-
+## What's next for GramAI
+- Optional code-snippet context alongside the traceback (v1.1), improves diagnosis accuracy on errors where the traceback alone is ambiguous
+- Sandboxed fix verification, run the suggested fix against a minimal reproduction and confirm it resolves the error before returning it to the user
+- Corpus expansion to cover JavaScript/Node.js and Rust compilation errors, same architecture, different error taxonomy
+- IDE integration as a VS Code extension, the offline inference engine stays identical, the UX layer changes
