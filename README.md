@@ -13,7 +13,7 @@ GramAI takes a Python traceback as input and returns a plain-English root-cause 
 - Inference: llama-cpp-python bindings, CPU-only (n_gpu_layers=0), max_tokens=300 hard cap, temperature=0.1 for deterministic diagnostic outputs
 - Benchmarks: 21.56 tokens/sec generation, 3,454 MB peak RAM, well within the 7GB ceiling
 
-## Challenges we ran into
+## Challenges I ran into
 RAG retrieval bleeding was the core technical problem. Early versions retrieved the wrong corpus entry for similar-looking tracebacks, a plain dict AttributeError was pulling in an API-response entry and hallucinating response.json() into the fix. Solving this required iterating on traceback_pattern field specificity, not just adding more entries. More corpus isn't better, more precise corpus is better.
 The other real challenge: a 3B model has strong internal priors from pretraining (e.g. sys.path.append is a very common Stack Overflow answer for ModuleNotFoundError) that compete with retrieved context. The fix was a combination of more directive system prompt instructions and rewriting fix fields to use Python-flavored syntax the model would anchor to, rather than shell command blocks it would ignore.
 
