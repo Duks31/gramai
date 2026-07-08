@@ -17,13 +17,14 @@ GramAI takes a Python traceback as input and returns a plain-English root-cause 
 RAG retrieval bleeding was the core technical problem. Early versions retrieved the wrong corpus entry for similar-looking tracebacks, a plain dict AttributeError was pulling in an API-response entry and hallucinating response.json() into the fix. Solving this required iterating on traceback_pattern field specificity, not just adding more entries. More corpus isn't better, more precise corpus is better.
 The other real challenge: a 3B model has strong internal priors from pretraining (e.g. sys.path.append is a very common Stack Overflow answer for ModuleNotFoundError) that compete with retrieved context. The fix was a combination of more directive system prompt instructions and rewriting fix fields to use Python-flavored syntax the model would anchor to, rather than shell command blocks it would ignore.
 
-## Accomplishments that we're proud of
+## Accomplishments that I am proud of
 The baseline test that mattered most: without RAG, the model gave a completely wrong fix for a TypeError caused by a config value loaded as a string from YAML, it suggested concatenating both operands as strings. With RAG, it correctly diagnosed the root cause and produced float(config['fraud_threshold']) + 0.05. That's the whole point of the system working, not impressive benchmark numbers, but a wrong answer becoming a right one on exactly the error type that trips up real developers.
 
-## What we learned
+## What I learned
 Retrieval quality matters more than corpus size. 48 well-written, precisely patterned, manually verified entries outperform 200 scraped entries with generic traceback_pattern fields. The embedding distance between a query and a corpus entry is entirely determined by how precisely the traceback_pattern captures the distinctive signature of that error, getting that right is the actual engineering work, not the model selection.
 
 ## What's next for GramAI
+- Increasing the speed of the model inference layer, currently the bottleneck, by exploring potential smaller model that don't sacrifice accuracy, and/or quantization techniques that reduce the number of CPU cycles per token.
 - Optional code-snippet context alongside the traceback (v1.1), improves diagnosis accuracy on errors where the traceback alone is ambiguous
 - Sandboxed fix verification, run the suggested fix against a minimal reproduction and confirm it resolves the error before returning it to the user
 - Corpus expansion to cover JavaScript/Node.js and Rust compilation errors, same architecture, different error taxonomy
